@@ -5,4 +5,12 @@ logging:
 
 ais:
   connector:
-    ais-data-endpoint: "/ais-data"
+    web-socket-port: 8100
+    socket:
+      timeout: 10000
+      keep-alive-message: "$PSTT,01\r\n"
+      keep-alive-response-message: "$PSTT,01*2E"
+      keep-alive-initial-delay: 20000
+      keep-alive-fixed-delay: 10000
+      keep-alive-timeout: 30000
+      logoff-message: "$PSTT,FF\r\n"

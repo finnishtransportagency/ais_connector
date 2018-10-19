@@ -20,109 +20,93 @@
  */
 package fi.liikennevirasto.ais_connector.websocket;
 
-import fi.liikennevirasto.ais_connector.client.AisTCPSocketClient;
-import fi.liikennevirasto.ais_connector.util.AisConnectionDetails;
+import fi.liikennevirasto.ais_connector.configuration.AisConnectorProperties;
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.web.server.LocalServerPort;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
-import org.springframework.mock.env.MockEnvironment;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit4.SpringRunner;
-import org.springframework.web.reactive.socket.WebSocketMessage;
-import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClient;
-import org.springframework.web.reactive.socket.client.WebSocketClient;
-import reactor.core.publisher.MonoProcessor;
-import reactor.ipc.netty.http.client.HttpClientException;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.time.Duration;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.mockito.Mockito.*;
 import static org.junit.Assert.*;
 
 @RunWith(SpringRunner.class)
 @TestPropertySource(properties = {
+        "ais.scheduling.enabled=false",
         "ais.connector.username=distributor",
-        "ais.connector.password=ENC(6Z9/QV2QVz19CmV6mSO+Rw==)"
+        "ais.connector.password=test"
 })
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public class AisWebSocketTest {
 
-    @MockBean
-    private AisTCPSocketClient aisTCPSocketClient;
+    @Autowired
+    private AisConnectorProperties aisConnectorProperties;
 
-    @LocalServerPort
-    private String port;
+    @Autowired
+    private AisWebSocketServer aisWebSocketServer;
 
-    static {
-        System.setProperty("jasypt.encryptor.password", "password");
+    @Test
+    public void testWebSocketRead() throws Exception {
+        String expectedAisData = "!ABVDM,1,1,,A,1P000Oh1IT1svTP2r:43grwb05q4,0*01";
+        AtomicReference<String> actualAisData = new AtomicReference<>();
+
+        WebSocketClient webSocketClient = new WebSocketClient(createUrl("distributor", "test")) {
+            @Override
+            public void onOpen(ServerHandshake handshakedata) {}
+            @Override
+            public void onMessage(String message) {
+                actualAisData.set(message);
+            }
+            @Override
+            public void onClose(int code, String reason, boolean remote) {}
+            @Override
+            public void onError(Exception ex) {}
+        };
+
+        webSocketClient.connectBlocking(10, TimeUnit.SECONDS);
+
+        aisWebSocketServer.broadcast(expectedAisData);
+
+        for (int i = 0; i < 100 && actualAisData.get() == null; i++) {
+            Thread.sleep(100);
+        }
+
+        assertEquals(expectedAisData, actualAisData.get());
     }
 
     @Test
-    public void testWebSocketRead() throws URISyntaxException {
-        String expectedAisData = "!ABVDM,1,1,,A,1P000Oh1IT1svTP2r:43grwb05q4,0*01";
-        MonoProcessor<String> output = MonoProcessor.create();
+    public void testWebSocketAuthenticationFails() throws Exception {
+        AtomicReference<Boolean> actualConnectionClosed = new AtomicReference<>(false);
 
-        doNothing().when(aisTCPSocketClient).connectToAisAndStartReadStream(any());
-        when(aisTCPSocketClient.readLineFromAis()).thenAnswer(new Answer<String>() {
-            private int i = 0;
-
+        WebSocketClient webSocketClient = new WebSocketClient(createUrl("distributor", "invalid")) {
             @Override
-            public String answer(InvocationOnMock invocation) {
-                return i++ == 0 ? expectedAisData : null; // only 1 message, null completes Flux
+            public void onOpen(ServerHandshake handshakedata) {}
+            @Override
+            public void onMessage(String message) {}
+            @Override
+            public void onClose(int code, String reason, boolean remote) {
+                actualConnectionClosed.set(true);
             }
-        });
+            @Override
+            public void onError(Exception ex) {}
+        };
 
-        WebSocketClient webSocketClient = new ReactorNettyWebSocketClient();
-        webSocketClient.execute(createUrl("/ais-data", "distributor", "test"), session -> session.receive()
-                .map(WebSocketMessage::getPayloadAsText)
-                .subscribeWith(output)
-                .then()
-        ).block(Duration.ofSeconds(30));
+        webSocketClient.connectBlocking(10, TimeUnit.SECONDS);
 
-        String actualAisData = output.block(Duration.ofSeconds(30));
-
-        assertEquals(expectedAisData, actualAisData);
+        assertTrue(actualConnectionClosed.get());
     }
 
-    @Test(expected = HttpClientException.class)
-    public void testWebSocketAuthenticationFails() throws URISyntaxException {
-
-        WebSocketClient webSocketClient = new ReactorNettyWebSocketClient();
-        webSocketClient.execute(createUrl("/ais-data", "distributor", "wrong"), session -> session.receive()
-                .map(WebSocketMessage::getPayloadAsText)
-                .then()
-        ).block(Duration.ofSeconds(30));
-    }
-
-    private URI createUrl(String path, String username, String password) throws URISyntaxException {
-        return new URI("ws://localhost:" + port + path + "?username=" + username + "&passwd=" + password);
-    }
-
-    @TestConfiguration
-    static class AisWebSocketTestConfiguration {
-
-        @Bean
-        @Primary
-        public AisConnectionDetails aisConnectionDetails() {
-            MockEnvironment env = new MockEnvironment();
-
-            env.setProperty("user", "user");
-            env.setProperty("passwd", "passwd");
-            env.setProperty("address", "address");
-            env.setProperty("port", "8080");
-
-            return new AisConnectionDetails(env);
-        }
-
+    private URI createUrl(String username, String password) throws URISyntaxException {
+        return new URI("ws://localhost:" + aisConnectorProperties.getConnector().getWebSocketPort() + "?username=" + username + "&passwd=" + password);
     }
 
 }

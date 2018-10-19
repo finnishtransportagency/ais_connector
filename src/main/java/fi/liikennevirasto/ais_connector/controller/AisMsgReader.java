@@ -20,55 +20,61 @@
  */
 package fi.liikennevirasto.ais_connector.controller;
 
-import fi.liikennevirasto.ais_connector.client.AisTCPSocketClient;
-import fi.liikennevirasto.ais_connector.util.AisConnectionDetails;
+import fi.liikennevirasto.ais_connector.client.AisTcpSocketClient;
+import fi.liikennevirasto.ais_connector.websocket.AisWebSocketServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
+import org.springframework.stereotype.Component;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import java.io.IOException;
 import java.time.Instant;
+import java.util.concurrent.Executors;
 
-public class AisMsgReader {
+@Component
+public class AisMsgReader implements Runnable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AisMsgReader.class);
 
-    private final AisTCPSocketClient aisTCPSocketClient;
+    private final AisTcpSocketClient aisTcpSocketClient;
+    private final AisWebSocketServer aisWebSocketServer;
 
     private int totalMsgCount = 0;
     private int deltaMsgCount = 0;
     private int intervalCount = 0;
     private Instant printStatsAt = addMinuteTo(Instant.now());
 
-    private Flux<String> aisDataFlux;
-
-    public AisMsgReader(AisTCPSocketClient aisTCPSocketClient) {
-        this.aisTCPSocketClient = aisTCPSocketClient;
+    public AisMsgReader(AisTcpSocketClient aisTcpSocketClient, AisWebSocketServer aisWebSocketServer) {
+        this.aisTcpSocketClient = aisTcpSocketClient;
+        this.aisWebSocketServer = aisWebSocketServer;
     }
 
-    public Flux<String> getAisDataFlux() {
-        return aisDataFlux;
+    @PostConstruct
+    public void setUp() {
+        Executors.newSingleThreadExecutor().submit(this);
     }
 
-    public void initAisMsgReading(AisConnectionDetails connDetails) {
-
-        aisTCPSocketClient.connectToAisAndStartReadStream(connDetails);
-
-        aisDataFlux = Flux.create((FluxSink<String> fluxSink) -> {
-            while (true) {
-                String line = readLine();
-                if (line == null) {
-                    fluxSink.complete();
-                    break;
+    @Override
+    public void run() {
+        try {
+            if (aisTcpSocketClient.connect()) {
+                while (true) {
+                    String aisMsg = readLine();
+                    if (aisMsg != null) {
+                        aisWebSocketServer.broadcast(aisMsg);
+                    }
                 }
-                fluxSink.next(line);
+            } else {
+                LOGGER.error("Unable to establish connection");
             }
-        });
+        } catch (IOException e) {
+            LOGGER.error("Failed to establish connection", e);
+        }
     }
 
     private String readLine() {
-        String line = aisTCPSocketClient.readLineFromAis();
+        String line = aisTcpSocketClient.readLine();
         updateStats();
         return line;
     }
@@ -95,6 +101,10 @@ public class AisMsgReader {
     @PreDestroy
     public void destroy() {
         LOGGER.debug("Exiting");
-        aisTCPSocketClient.closeAisConnection();
+        try {
+            aisTcpSocketClient.close();
+        } catch (Exception e) {
+            LOGGER.error("Failed to close connection", e);
+        }
     }
 }

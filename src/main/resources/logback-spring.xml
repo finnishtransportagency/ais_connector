@@ -11,7 +11,7 @@
 
         <logger name="org.springframework" level="INFO" />
         <logger name="fi.liikennevirasto.ais_connector" level="TRACE" />
-        <logger name="fi.liikennevirasto.ais_connector.client" level="INFO" />
+        <logger name="fi.liikennevirasto.ais_connector.client" level="DEBUG" />
         <logger name="fi.liikennevirasto.ais_connector.controller" level="DEBUG" />
         <logger name="fi.liikennevirasto.ais_connector.util" level="INFO" />
 
@@ -21,13 +21,23 @@
     </springProfile>
 
     <springProfile name="dev,test,prod">
-        <appender name="journal" class="org.gnieh.logback.SystemdJournalAppender" />
+        <appender name="file" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>./ais-connector.log</file>
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <Pattern>${FILE_LOG_PATTERN}</Pattern>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>./archived/ais-connector_%d{yyyy-MM-dd}.log</fileNamePattern>
+                <maxHistory>10</maxHistory>
+                <totalSizeCap>100MB</totalSizeCap>
+            </rollingPolicy>
+        </appender>
 
         <logger name="org.springframework" level="INFO" />
         <logger name="fi.liikennevirasto.ais_connector" level="INFO" />
 
         <root level="WARN">
-            <appender-ref ref="journal" />
+            <appender-ref ref="file" />
         </root>
     </springProfile>
 </configuration>

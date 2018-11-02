@@ -24,6 +24,8 @@ import fi.liikennevirasto.ais_connector.configuration.AisConnectorProperties;
 import fi.liikennevirasto.ais_connector.util.AisConnectionDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 public class AisTcpSocketClient implements AutoCloseable {
 
+    private static final Marker FATAL = MarkerFactory.getMarker("FATAL");
     private static final Logger LOGGER = LoggerFactory.getLogger(AisTcpSocketClient.class);
 
     private static final Object LOCK = new Object();
@@ -61,7 +64,7 @@ public class AisTcpSocketClient implements AutoCloseable {
     public boolean connect() throws IOException {
         if (isConnecting.compareAndSet(false, true)) {
             if (!connDetails.isValid()) {
-                LOGGER.error("Invalid connection details ({})", connDetails);
+                LOGGER.error(FATAL, "Invalid connection details ({})", connDetails);
                 return false;
             }
 
@@ -119,10 +122,11 @@ public class AisTcpSocketClient implements AutoCloseable {
             }
 
             if (line == null) {
-                LOGGER.error("Unable to read from socket. Possible invalid credentials?");
+                isConnected.set(false); // trigger reconnect
+                LOGGER.error(FATAL, "Unable to read from socket. Possible invalid credentials?");
             }
 
-            LOGGER.debug("lineFromAisServer: " + line);
+            LOGGER.debug("lineFromAisServer: {}", line);
             return line;
         } catch (IOException e) {
             LOGGER.error(e.getMessage());
@@ -136,7 +140,7 @@ public class AisTcpSocketClient implements AutoCloseable {
         }
         int startIndex = line.indexOf("!");
         if (startIndex > 0) {
-            LOGGER.info("Skipped: " + line.substring(0, startIndex - 1));
+            LOGGER.info("Skipped: {}", line.substring(0, startIndex - 1));
             line = line.substring(startIndex);
         }
         return line;

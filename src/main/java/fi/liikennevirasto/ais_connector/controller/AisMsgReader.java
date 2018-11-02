@@ -66,7 +66,7 @@ public class AisMsgReader implements Runnable {
                     }
                 }
             } else {
-                LOGGER.error("Unable to establish connection");
+                throw new AisMsgReaderException("Unable to establish connection to VTS server");
             }
         } catch (IOException e) {
             LOGGER.error("Failed to establish connection", e);
@@ -95,7 +95,7 @@ public class AisMsgReader implements Runnable {
     }
 
     private void printStats(int deltaCount, int intervals, int totalCount) {
-        LOGGER.info("Msg count from last minute: " + deltaCount + ", total from last " + intervals + " minutes: " + totalCount);
+        LOGGER.info("Msg count from last minute: {}, total from last {} minutes: {}", deltaCount, intervals, totalCount);
     }
 
     @PreDestroy

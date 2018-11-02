@@ -22,6 +22,8 @@ package fi.liikennevirasto.ais_connector.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -31,6 +33,7 @@ import java.io.IOException;
 @Component
 public class AisTcpSocketClientHealthCheck {
 
+    private static final Marker FATAL = MarkerFactory.getMarker("FATAL");
     private static final Logger LOGGER = LoggerFactory.getLogger(AisTcpSocketClientHealthCheck.class);
 
     private final AisTcpSocketClient aisTcpSocketClient;
@@ -49,13 +52,13 @@ public class AisTcpSocketClientHealthCheck {
             try {
                 aisTcpSocketClient.sendKeepAlive();
             } catch (IOException e) {
-                LOGGER.error("Failed to send Keep-Alive", e);
+                LOGGER.error(FATAL, "Failed to send Keep-Alive", e);
             }
         } else {
             try {
                 aisTcpSocketClient.reconnect();
             } catch (Exception e) {
-                LOGGER.error("Failed to reconnect", e);
+                LOGGER.error(FATAL, "Failed to reconnect", e);
             }
         }
     }

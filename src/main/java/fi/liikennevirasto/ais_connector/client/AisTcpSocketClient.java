@@ -129,7 +129,8 @@ public class AisTcpSocketClient implements AutoCloseable {
             LOGGER.debug("lineFromAisServer: {}", line);
             return line;
         } catch (IOException e) {
-            LOGGER.error(e.getMessage());
+            isConnected.set(false); // trigger reconnect
+            LOGGER.error(FATAL, "Unable to read from socket.");
         }
         return null;
     }
@@ -169,12 +170,10 @@ public class AisTcpSocketClient implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        if (isConnected.compareAndSet(true, false)) {
-            LOGGER.info("Disconnecting from {}", connDetails);
-            logoff();
-            socket.close();
-            LOGGER.info("Disconnected from {}", connDetails);
-        }
+        LOGGER.info("Disconnecting from {}", connDetails);
+        logoff();
+        socket.close();
+        LOGGER.info("Disconnected from {}", connDetails);
     }
 
     private void logoff() throws IOException {

@@ -24,6 +24,8 @@ import fi.liikennevirasto.ais_connector.client.AisTcpSocketClient;
 import fi.liikennevirasto.ais_connector.websocket.AisWebSocketServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -31,10 +33,12 @@ import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class AisMsgReader implements Runnable {
 
+    private static final Marker FATAL = MarkerFactory.getMarker("FATAL");
     private static final Logger LOGGER = LoggerFactory.getLogger(AisMsgReader.class);
 
     private final AisTcpSocketClient aisTcpSocketClient;
@@ -63,13 +67,20 @@ public class AisMsgReader implements Runnable {
                     String aisMsg = readLine();
                     if (aisMsg != null) {
                         aisWebSocketServer.broadcast(aisMsg);
+                    } else {
+                        try {
+                            TimeUnit.SECONDS.sleep(10);
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
                     }
                 }
             } else {
                 throw new AisMsgReaderException("Unable to establish connection to VTS server");
             }
         } catch (IOException e) {
-            LOGGER.error("Failed to establish connection", e);
+            LOGGER.error(FATAL, "Failed to establish connection", e);
+            throw new AisMsgReaderException("Unable to establish connection to VTS server");
         }
     }
 

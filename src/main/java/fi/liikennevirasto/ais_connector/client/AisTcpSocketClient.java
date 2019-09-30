@@ -34,6 +34,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.Socket;
+import java.net.SocketException;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -169,10 +170,14 @@ public class AisTcpSocketClient implements AutoCloseable {
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() {
         LOGGER.info("Disconnecting from {}", connDetails);
-        logoff();
-        socket.close();
+        try {
+            logoff();
+            socket.close();
+        } catch (IOException ex) {
+            LOGGER.error("Failed to disconnect");
+        }
         LOGGER.info("Disconnected from {}", connDetails);
     }
 
